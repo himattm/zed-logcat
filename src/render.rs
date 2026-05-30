@@ -88,8 +88,19 @@ impl Renderer {
     }
 
     pub fn render<W: Write>(&mut self, emit: &Emit, out: &mut W) -> io::Result<()> {
+        self.render_counted(emit, 1, out)
+    }
+
+    /// Like [`Self::render`], but annotates a deduped record with a dim `×count` suffix
+    /// when `count > 1`.
+    pub fn render_counted<W: Write>(
+        &mut self,
+        emit: &Emit,
+        count: u32,
+        out: &mut W,
+    ) -> io::Result<()> {
         match emit {
-            Emit::Record(r) => self.record_line(r.level, &r.ts, &r.tag, &r.msg, out),
+            Emit::Record(r) => self.record_line(r.level, &r.ts, &r.tag, &r.msg, count, out),
             Emit::Trace(t) => self.trace_block(t, out),
             Emit::Divider(buf) => self.divider(buf, out),
             Emit::Raw(s) => writeln!(out, "{s}"),
@@ -108,6 +119,7 @@ impl Renderer {
         ts: &str,
         tag: &str,
         msg: &str,
+        repeat: u32,
         out: &mut W,
     ) -> io::Result<()> {
         let changed = self.last_tag.as_deref() != Some(tag);
@@ -128,12 +140,19 @@ impl Renderer {
         } else {
             vec![msg.to_string()]
         };
+        let last = chunks.len() - 1;
         for (i, chunk) in chunks.iter().enumerate() {
             let painted = paint(self.opts.color, lc, chunk);
-            if i == 0 {
-                writeln!(out, "{prefix}{painted}")?;
+            // A `×N` counter for collapsed duplicates rides the last line, dimmed.
+            let suffix = if repeat > 1 && i == last {
+                paint(self.opts.color, "2", &format!("  ×{repeat}"))
             } else {
-                writeln!(out, "{}{painted}", self.cont_prefix(lc))?;
+                String::new()
+            };
+            if i == 0 {
+                writeln!(out, "{prefix}{painted}{suffix}")?;
+            } else {
+                writeln!(out, "{}{painted}{suffix}", self.cont_prefix(lc))?;
             }
         }
         Ok(())
@@ -159,7 +178,7 @@ impl Renderer {
 
     fn trace_block<W: Write>(&mut self, t: &Trace, out: &mut W) -> io::Result<()> {
         let head = &t.records[0];
-        self.record_line(head.level, &head.ts, &head.tag, &head.msg, out)?;
+        self.record_line(head.level, &head.ts, &head.tag, &head.msg, 1, out)?;
         let lc = level_fg(head.level);
         for rec in &t.records[1..] {
             let body = self.trace_line(&rec.msg, lc);
@@ -371,6 +390,15 @@ mod tests {
         let got = render(&emits, RenderOptions::spec(false, 80));
         assert_eq!(got.matches("MyApp").count(), 1, "tag repeated:\n{got}");
         assert_eq!(got.matches("Other").count(), 1);
+    }
+
+    #[test]
+    fn deduped_record_shows_count_suffix() {
+        let mut r = Renderer::new(RenderOptions::spec(false, 80));
+        let mut out = Vec::new();
+        r.render_counted(&rec(Level::Info, "T", "tick"), 5, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("tick") && text.contains("×5"), "{text:?}");
     }
 
     #[test]

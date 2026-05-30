@@ -53,6 +53,10 @@ pub struct Args {
     /// Minimum level to show: V, D, I, W, E, or F (default: V).
     #[arg(short = 'm', long = "min-level", value_name = "LEVEL")]
     pub min_level: Option<String>,
+
+    /// Do not collapse consecutive identical lines into a ×N counter.
+    #[arg(long = "no-dedupe")]
+    pub no_dedupe: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -101,6 +105,7 @@ impl Args {
             tag_includes: self.tag,
             tag_excludes: self.exclude_tag,
             min_level,
+            dedupe: !self.no_dedupe,
             seed_pids: HashSet::new(),
         })
     }

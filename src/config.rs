@@ -33,6 +33,8 @@ pub struct Config {
     pub tag_excludes: Vec<String>,
     /// Minimum level to show.
     pub min_level: Level,
+    /// Collapse consecutive identical lines into a `×N` counter (default on).
+    pub dedupe: bool,
     /// PIDs seeded at startup via `adb shell pidof` (empty on the stdin path).
     pub seed_pids: HashSet<u32>,
 }

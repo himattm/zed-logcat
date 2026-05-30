@@ -7,6 +7,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod dedupe;
 pub mod filter;
 pub mod input;
 pub mod model;
@@ -19,6 +20,7 @@ pub mod trace;
 use std::io::{self, Write};
 
 use config::Config;
+use dedupe::Deduper;
 use filter::Filter;
 use parse::{parse_line, ParsedLine};
 use pidtrack::Tracker;
@@ -45,6 +47,7 @@ where
         &cfg.tag_excludes,
         cfg.min_level,
     )?;
+    let mut deduper = Deduper::new(cfg.dedupe);
     let mut renderer = Renderer::new(RenderOptions::spec(cfg.color, cfg.width));
     renderer.set_resolver(Resolver::new(cfg.root.clone()));
 
@@ -58,15 +61,24 @@ where
         }
         for emit in asm.push(parsed) {
             if filter.keep(&emit, tracker.pids()) {
-                renderer.render(&emit, out)?;
+                for (e, n) in deduper.push(emit) {
+                    renderer.render_counted(&e, n, out)?;
+                }
             }
         }
         out.flush()?;
     }
+    // Drain assembler, then dedupe, on end-of-stream (the live path drives the same
+    // flushes from an idle-timeout so a quiet app still surfaces its last line/crash).
     for emit in asm.flush() {
         if filter.keep(&emit, tracker.pids()) {
-            renderer.render(&emit, out)?;
+            for (e, n) in deduper.push(emit) {
+                renderer.render_counted(&e, n, out)?;
+            }
         }
+    }
+    for (e, n) in deduper.flush() {
+        renderer.render_counted(&e, n, out)?;
     }
     out.flush()?;
     Ok(())
@@ -119,6 +131,7 @@ mod tests {
             tag_includes: Vec::new(),
             tag_excludes: Vec::new(),
             min_level: Level::Verbose,
+            dedupe: true,
             seed_pids: std::collections::HashSet::new(),
         }
     }
