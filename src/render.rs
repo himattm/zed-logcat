@@ -57,7 +57,7 @@ impl RenderOptions {
             wrap: true,
             chip: ChipStyle::Reverse,
             tag_align: TagAlign::Right,
-            connector: '┃',
+            connector: '▕',
         }
     }
 }
@@ -450,7 +450,7 @@ mod tests {
         let lines: Vec<&str> = got.lines().collect();
         assert!(lines.len() >= 2, "expected wrap: {got:?}");
         // continuation: connector in the chip's rightmost cell, then text aligns.
-        assert!(lines[1].starts_with("  ┃"), "{:?}", lines[1]);
-        assert!(lines[1].chars().any(|c| !c.is_whitespace() && c != '┃'));
+        assert!(lines[1].starts_with("  ▕"), "{:?}", lines[1]);
+        assert!(lines[1].chars().any(|c| !c.is_whitespace() && c != '▕'));
     }
 }
