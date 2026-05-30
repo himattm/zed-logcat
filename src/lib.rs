@@ -9,6 +9,9 @@
 pub mod cli;
 pub mod config;
 pub mod input;
+pub mod model;
+pub mod parse;
+pub mod trace;
 
 use std::io::{self, Write};
 
