@@ -28,11 +28,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install cargo-zigbuild (musl targets)
+      - name: Install cross (musl targets)
         if: contains(matrix.target, 'musl')
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-zigbuild
+          tool: cross
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: zlc
@@ -42,10 +42,8 @@ jobs:
           zip: none
           checksum: sha256
           include: README.md,LICENSE
-          build-tool: ${{ contains(matrix.target, 'musl') && 'cargo-zigbuild' || 'cargo' }}
+          build-tool: ${{ contains(matrix.target, 'musl') && 'cross' || 'cargo' }}
           locked: true
-        env:
-          RUSTFLAGS: ${{ contains(matrix.target, 'musl') && '-C target-feature=+crt-static' || '' }}
 
   # Render the multi-arch formula (all four sha256s) and push it to the tap.
   homebrew:

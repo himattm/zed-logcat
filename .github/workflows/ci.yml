@@ -58,18 +58,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      # zig bundles the C toolchain/sysroot so both musl targets cross-build on x86_64
-      # with no Docker/QEMU (zlc has no native C deps).
-      - name: Install cargo-zigbuild
+      # cross builds both musl targets in a Docker image with the toolchain baked in
+      # (static musl by default); zlc has no native C deps, so this just works.
+      - name: Install cross
         if: matrix.musl
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-zigbuild
+          tool: cross
       - name: Build (musl, static)
         if: matrix.musl
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo zigbuild --release --target ${{ matrix.target }}
+        run: cross build --release --target ${{ matrix.target }}
       - name: Build (native macOS)
         if: ${{ !matrix.musl }}
         run: cargo build --release --target ${{ matrix.target }}
