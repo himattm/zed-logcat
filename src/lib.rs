@@ -3,32 +3,48 @@
 //! The pipeline core is the pure [`run`] function: it consumes an iterator of lines
 //! and writes rendered output to a sink, with no knowledge of adb, threads, or the
 //! terminal. Tests drive it from a `Vec<&str>`; production wraps it around a live
-//! `adb logcat` source. Phase 1 is a raw passthrough — parsing and rendering land in
-//! later phases behind this same signature.
+//! `adb logcat` source.
 
 pub mod cli;
 pub mod config;
 pub mod input;
 pub mod model;
 pub mod parse;
+pub mod render;
 pub mod trace;
 
 use std::io::{self, Write};
 
 use config::Config;
+use parse::parse_line;
+use render::{RenderOptions, Renderer};
+use trace::Assembler;
 
-/// Core pipeline. Phase 1: raw passthrough with a prompt flush after every line so a
-/// live tail appears immediately (stdout is block-buffered to a pipe by default).
-pub fn run<I, W>(lines: I, out: &mut W, _cfg: &Config) -> io::Result<()>
+/// Core pipeline: parse each line, assemble multi-line traces, render to `out`.
+///
+/// A prompt flush after each line keeps a live tail responsive (stdout is
+/// block-buffered to a pipe by default). End-of-stream flushes any trace still being
+/// assembled — in the live path an idle-timeout drives the same `flush` so a crash
+/// that is the last thing emitted still surfaces.
+pub fn run<I, W>(lines: I, out: &mut W, cfg: &Config) -> io::Result<()>
 where
     I: IntoIterator<Item = io::Result<String>>,
     W: Write,
 {
+    let mut asm = Assembler::new();
+    let mut renderer = Renderer::new(RenderOptions::spec(cfg.color, cfg.width));
+
     for line in lines {
         let line = line?;
-        writeln!(out, "{line}")?;
+        for emit in asm.push(parse_line(&line)) {
+            renderer.render(&emit, out)?;
+        }
         out.flush()?;
     }
+    for emit in asm.flush() {
+        renderer.render(&emit, out)?;
+    }
+    out.flush()?;
     Ok(())
 }
 
@@ -73,19 +89,19 @@ mod tests {
     }
 
     #[test]
-    fn run_passes_lines_through_verbatim() {
-        let input = vec![
-            Ok("05-30 12:00:00.123  1234  1234 I MyApp: hello".to_string()),
-            Ok("05-30 12:00:01.000  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main".to_string()),
+    fn run_renders_records_without_color() {
+        let lines = vec![
+            Ok("05-30 12:00:00.123  1  1 I MyApp: hello".to_string()),
+            Ok("05-30 12:00:00.200  1  1 D MyApp: world".to_string()),
         ];
         let mut out = Vec::new();
-        run(input, &mut out, &test_cfg()).unwrap();
+        run(lines, &mut out, &test_cfg()).unwrap();
         let text = String::from_utf8(out).unwrap();
-        assert_eq!(
-            text,
-            "05-30 12:00:00.123  1234  1234 I MyApp: hello\n\
-             05-30 12:00:01.000  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main\n"
-        );
+
+        assert!(!text.contains('\x1b'), "color must be off: {text:?}");
+        assert!(text.contains("hello") && text.contains("world"));
+        // changes-only tag: the repeated tag is printed once.
+        assert_eq!(text.matches("MyApp").count(), 1);
     }
 
     #[test]

@@ -1,0 +1,16 @@
+05-30 12:00:00.123  4120  4120 I MyApp/Network: request started: GET /v1/user
+05-30 12:00:00.140  4120  4155 D OkHttp: --> GET https://api.example.com/v1/user
+05-30 12:00:00.456  4120  4155 D OkHttp: <-- 200 OK (142ms)
+05-30 12:00:00.460  4120  4120 I MyApp/UI: rendered home screen with 12 cards and a fairly long status message that should wrap onto a second line in a narrow pane
+05-30 12:00:00.800  4120  4120 W MyApp/UI: skipped 31 frames! the main thread is doing too much work
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: FATAL EXCEPTION: main
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: Process: com.example.app, PID: 4120
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: kotlin.UninitializedPropertyAccessException: lateinit property db has not been initialized
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	at com.example.app.MainActivity.onCreate(MainActivity.kt:42)
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	at com.example.app.MainActivity.load(MainActivity.kt:88)
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	at android.app.Activity.performCreate(Activity.java:8000)
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3700)
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: Caused by: java.lang.IllegalStateException: database not open
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	at com.example.app.data.AppDatabase.open(AppDatabase.kt:31)
+05-30 12:00:01.000  4120  4120 E AndroidRuntime: 	... 12 more
+05-30 12:00:02.500  4120  4120 I MyApp/Network: retrying request after crash recovery

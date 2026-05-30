@@ -145,7 +145,7 @@ fn is_continuation(msg: &str) -> bool {
 static EXC_HEADER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[\w.$]+(?:Exception|Error|Throwable)(?::|\b)").unwrap());
 
-fn is_exception_header(msg: &str) -> bool {
+pub(crate) fn is_exception_header(msg: &str) -> bool {
     EXC_HEADER.is_match(msg)
 }
 
