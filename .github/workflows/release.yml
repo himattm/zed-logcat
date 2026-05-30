@@ -1,0 +1,94 @@
+name: release
+
+# Push a version tag to cut a release, e.g.:
+#   (bump `version` in Cargo.toml to match, then)
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # allow GITHUB_TOKEN to upload assets to this repo's release
+
+jobs:
+  # Build each target and upload a tar.gz (+ .sha256) to the GitHub Release.
+  upload-assets:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cargo-zigbuild (musl targets)
+        if: contains(matrix.target, 'musl')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: zlc
+          target: ${{ matrix.target }}
+          archive: zlc-$target
+          tar: unix
+          zip: none
+          checksum: sha256
+          include: README.md,LICENSE
+          build-tool: ${{ contains(matrix.target, 'musl') && 'cargo-zigbuild' || 'cargo' }}
+          locked: true
+        env:
+          RUSTFLAGS: ${{ contains(matrix.target, 'musl') && '-C target-feature=+crt-static' || '' }}
+
+  # Render the multi-arch formula (all four sha256s) and push it to the tap.
+  homebrew:
+    needs: upload-assets
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout zed-logcat (formula template)
+        uses: actions/checkout@v6
+      - name: Checkout tap (separate repo)
+        uses: actions/checkout@v6
+        with:
+          repository: himattm/homebrew-zlc
+          token: ${{ secrets.COMMITTER_TOKEN }} # PAT with Contents:write on the tap; GITHUB_TOKEN cannot push cross-repo
+          path: tap
+      - name: Render formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          BASE="https://github.com/himattm/zed-logcat/releases/download/${TAG}"
+          sha() { gh release download "$TAG" -R himattm/zed-logcat -p "$1" -O - | sha256sum | cut -d' ' -f1; }
+          MAC_ARM=$(sha zlc-aarch64-apple-darwin.tar.gz)
+          MAC_X86=$(sha zlc-x86_64-apple-darwin.tar.gz)
+          LNX_ARM=$(sha zlc-aarch64-unknown-linux-musl.tar.gz)
+          LNX_X86=$(sha zlc-x86_64-unknown-linux-musl.tar.gz)
+          mkdir -p tap/Formula
+          sed \
+            -e "s|@VERSION@|${VER}|g" \
+            -e "s|@BASE@|${BASE}|g" \
+            -e "s|@MAC_ARM@|${MAC_ARM}|g" \
+            -e "s|@MAC_X86@|${MAC_X86}|g" \
+            -e "s|@LNX_ARM@|${LNX_ARM}|g" \
+            -e "s|@LNX_X86@|${LNX_X86}|g" \
+            packaging/zlc-formula.rb.tmpl > tap/Formula/zlc.rb
+          echo "--- rendered formula ---"; cat tap/Formula/zlc.rb
+      - name: Commit & push formula
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/zlc.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "zlc ${{ github.ref_name }}"
+          git push

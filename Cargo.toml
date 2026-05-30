@@ -1,6 +1,6 @@
 [package]
 name = "zlc"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 description = "Readable, navigable Android logcat for the Zed editor (zed-logcat)"
 license = "Apache-2.0"

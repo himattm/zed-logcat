@@ -30,7 +30,18 @@ must be an external CLI). It wraps `adb` directly and needs only `adb` on your P
 - **Live or replay** — auto-detects a piped stdin; otherwise tails `adb logcat` with a
   responsive idle-flush so a quiet app's last line/crash surfaces promptly.
 
-Deferred: `--json` NDJSON (awaiting a consumer); cross-compiled release/distribution.
+Deferred: `--json` NDJSON (awaiting a consumer).
+
+## Install
+
+```sh
+brew install himattm/zlc/zlc
+```
+
+Or download a prebuilt binary (macOS arm64/x86_64, Linux musl arm64/x86_64) from the
+[Releases](https://github.com/himattm/zed-logcat/releases) page, or build from source
+with `cargo build --release` (binary at `target/release/zlc`). `adb` must be on your
+PATH either way.
 
 ## Usage
 

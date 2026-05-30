@@ -1,0 +1,39 @@
+# Homebrew formula template. The release workflow fills in @VERSION@/@BASE@/@*_SHA@
+# and pushes the rendered file to the tap repo (himattm/homebrew-zlc) as
+# Formula/zlc.rb. Do not edit the tap copy by hand — it is regenerated each release.
+class Zlc < Formula
+  desc "Readable, navigable Android logcat for the Zed editor"
+  homepage "https://github.com/himattm/zed-logcat"
+  version "@VERSION@"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "@BASE@/zlc-aarch64-apple-darwin.tar.gz"
+      sha256 "@MAC_ARM@"
+    end
+    on_intel do
+      url "@BASE@/zlc-x86_64-apple-darwin.tar.gz"
+      sha256 "@MAC_X86@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "@BASE@/zlc-aarch64-unknown-linux-musl.tar.gz"
+      sha256 "@LNX_ARM@"
+    end
+    on_intel do
+      url "@BASE@/zlc-x86_64-unknown-linux-musl.tar.gz"
+      sha256 "@LNX_X86@"
+    end
+  end
+
+  def install
+    bin.install "zlc"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/zlc --version")
+  end
+end
