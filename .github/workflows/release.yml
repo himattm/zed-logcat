@@ -49,16 +49,28 @@ jobs:
   homebrew:
     needs: upload-assets
     runs-on: ubuntu-24.04
+    env:
+      TAP_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
     steps:
+      - name: Skip if the tap token is missing
+        id: gate
+        run: |
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "::warning::COMMITTER_TOKEN not set — skipping Homebrew publish (binaries still released)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout zed-logcat (formula template)
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@v6
       - name: Checkout tap (separate repo)
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           repository: himattm/homebrew-zlc
           token: ${{ secrets.COMMITTER_TOKEN }} # PAT with Contents:write on the tap; GITHUB_TOKEN cannot push cross-repo
           path: tap
       - name: Render formula
+        if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -82,6 +94,7 @@ jobs:
             packaging/zlc-formula.rb.tmpl > tap/Formula/zlc.rb
           echo "--- rendered formula ---"; cat tap/Formula/zlc.rb
       - name: Commit & push formula
+        if: steps.gate.outputs.skip != 'true'
         working-directory: tap
         run: |
           git config user.name "github-actions[bot]"
