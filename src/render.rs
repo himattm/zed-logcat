@@ -139,18 +139,20 @@ impl Renderer {
         Ok(())
     }
 
-    /// Indent for continuation lines: a blank time column, the connector glyph in the
-    /// chip column (painted in the block's level color), then blanks to the message
-    /// column. Total visible width equals [`Self::indent`].
+    /// Indent for continuation lines. The connector is right-aligned to the chip
+    /// column — the chip slot is left blank and the bar sits just past its right edge
+    /// (painted in the block's level color) — with the message column unchanged. Total
+    /// visible width equals [`Self::indent`].
     fn cont_prefix(&self, lc: &str) -> String {
         let time = if self.opts.show_time {
             " ".repeat(TIME_W)
         } else {
             String::new()
         };
-        let conn = paint(self.opts.color, lc, &format!(" {} ", self.opts.connector));
-        let rest = " ".repeat(1 + self.opts.tag_width + 1);
-        format!("{time}{conn}{rest}")
+        let blank_chip = " ".repeat(CHIP_W);
+        let conn = paint(self.opts.color, lc, &self.opts.connector.to_string());
+        let rest = " ".repeat(self.opts.tag_width + 1);
+        format!("{time}{blank_chip}{conn}{rest}")
     }
 
     fn trace_block<W: Write>(&mut self, t: &Trace, out: &mut W) -> io::Result<()> {
@@ -445,8 +447,8 @@ mod tests {
         let got = render(&emits, RenderOptions::spec(false, 40));
         let lines: Vec<&str> = got.lines().collect();
         assert!(lines.len() >= 2, "expected wrap: {got:?}");
-        // continuation starts with the connector glyph in the chip column, then aligns.
-        assert!(lines[1].starts_with(" ┃ "), "{:?}", lines[1]);
+        // continuation: blank chip slot, connector at the chip's right edge, then text.
+        assert!(lines[1].starts_with("   ┃"), "{:?}", lines[1]);
         assert!(lines[1].chars().any(|c| !c.is_whitespace() && c != '┃'));
     }
 }
