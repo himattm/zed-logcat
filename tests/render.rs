@@ -19,7 +19,10 @@ fn renders_session_without_color() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
 
-    assert!(!stdout.contains('\u{1b}'), "expected no ANSI with --color never");
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "expected no ANSI with --color never"
+    );
     // Messages and tags survive rendering; the crash assembles with its chain.
     assert!(stdout.contains("FATAL EXCEPTION: main"));
     assert!(stdout.contains("Caused by:"));

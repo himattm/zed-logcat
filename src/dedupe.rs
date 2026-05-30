@@ -107,16 +107,16 @@ mod tests {
     #[test]
     fn non_record_flushes_pending_run() {
         let out = run(vec![rec("tick"), rec("tick"), Emit::Raw("---".to_string())]);
-        assert_eq!(
-            out,
-            vec![("tick".to_string(), 2), ("---".to_string(), 1)]
-        );
+        assert_eq!(out, vec![("tick".to_string(), 2), ("---".to_string(), 1)]);
     }
 
     #[test]
     fn disabled_passes_everything_through() {
         let mut d = Deduper::new(false);
-        let out: Vec<_> = [rec("x"), rec("x")].into_iter().flat_map(|e| d.push(e)).collect();
+        let out: Vec<_> = [rec("x"), rec("x")]
+            .into_iter()
+            .flat_map(|e| d.push(e))
+            .collect();
         assert_eq!(out.len(), 2);
     }
 }

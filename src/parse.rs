@@ -101,7 +101,9 @@ mod tests {
 
     #[test]
     fn parses_year_prefix_and_five_digit_ids() {
-        let r = record("2026-05-30 12:00:00.456789  12345  67890 E AndroidRuntime: FATAL EXCEPTION: main");
+        let r = record(
+            "2026-05-30 12:00:00.456789  12345  67890 E AndroidRuntime: FATAL EXCEPTION: main",
+        );
         assert_eq!(r.pid, 12345);
         assert_eq!(r.tid, 67890);
         assert_eq!(r.level, Level::Error);

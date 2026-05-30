@@ -53,10 +53,7 @@ pub struct AdbStream {
 
 impl AdbStream {
     /// Receive the next line, or time out so the caller can flush on idle.
-    pub fn recv_timeout(
-        &self,
-        timeout: Duration,
-    ) -> Result<io::Result<String>, RecvTimeoutError> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<io::Result<String>, RecvTimeoutError> {
         self.rx.recv_timeout(timeout)
     }
 }

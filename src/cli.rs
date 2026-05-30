@@ -17,7 +17,12 @@ use crate::model::Level;
 )]
 pub struct Args {
     /// Target device serial (adb -s). When piping a stream in, this is ignored.
-    #[arg(short = 's', long = "serial", visible_alias = "device", value_name = "SERIAL")]
+    #[arg(
+        short = 's',
+        long = "serial",
+        visible_alias = "device",
+        value_name = "SERIAL"
+    )]
     pub serial: Option<String>,
 
     /// Clear the logcat buffer before tailing (adb logcat -c).

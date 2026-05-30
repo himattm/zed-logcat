@@ -53,19 +53,55 @@ fn main() {
     let variants = [
         (
             "A  reverse chip · right tag(17) · no time   [approved spec]",
-            RenderOptions { color, width, tag_width: 17, show_time: false, wrap: true, chip: ChipStyle::Reverse, tag_align: TagAlign::Right, connector },
+            RenderOptions {
+                color,
+                width,
+                tag_width: 17,
+                show_time: false,
+                wrap: true,
+                chip: ChipStyle::Reverse,
+                tag_align: TagAlign::Right,
+                connector,
+            },
         ),
         (
             "B  reverse chip · right tag(17) · time",
-            RenderOptions { color, width, tag_width: 17, show_time: true, wrap: true, chip: ChipStyle::Reverse, tag_align: TagAlign::Right, connector },
+            RenderOptions {
+                color,
+                width,
+                tag_width: 17,
+                show_time: true,
+                wrap: true,
+                chip: ChipStyle::Reverse,
+                tag_align: TagAlign::Right,
+                connector,
+            },
         ),
         (
             "C  bar chip · left tag(20) · time",
-            RenderOptions { color, width, tag_width: 20, show_time: true, wrap: true, chip: ChipStyle::Bar, tag_align: TagAlign::Left, connector },
+            RenderOptions {
+                color,
+                width,
+                tag_width: 20,
+                show_time: true,
+                wrap: true,
+                chip: ChipStyle::Bar,
+                tag_align: TagAlign::Left,
+                connector,
+            },
         ),
         (
             "D  bracket chip · right tag(23) · no time",
-            RenderOptions { color, width, tag_width: 23, show_time: false, wrap: true, chip: ChipStyle::Bracket, tag_align: TagAlign::Right, connector },
+            RenderOptions {
+                color,
+                width,
+                tag_width: 23,
+                show_time: false,
+                wrap: true,
+                chip: ChipStyle::Bracket,
+                tag_align: TagAlign::Right,
+                connector,
+            },
         ),
     ];
 

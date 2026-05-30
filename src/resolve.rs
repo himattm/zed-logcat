@@ -205,7 +205,8 @@ mod tests {
 
     #[test]
     fn parses_app_frame() {
-        let f = parse_frame("at com.example.app.MainActivity.onCreate(MainActivity.kt:42)").unwrap();
+        let f =
+            parse_frame("at com.example.app.MainActivity.onCreate(MainActivity.kt:42)").unwrap();
         assert_eq!(f.pkg_path, "com/example/app");
         assert_eq!(f.short, "MainActivity.onCreate");
         assert_eq!(f.file.as_deref(), Some("MainActivity.kt"));
@@ -222,7 +223,12 @@ mod tests {
 
     #[test]
     fn native_and_unknown_have_no_location() {
-        assert_eq!(parse_frame("at dalvik.system.VMStack.getThreadStackTrace(Native Method)").unwrap().file, None);
+        assert_eq!(
+            parse_frame("at dalvik.system.VMStack.getThreadStackTrace(Native Method)")
+                .unwrap()
+                .file,
+            None
+        );
         assert_eq!(parse_frame("at a.b.c(Unknown Source)").unwrap().file, None);
         assert_eq!(parse_frame("at a.b.c(SourceFile)").unwrap().file, None);
     }
@@ -242,7 +248,7 @@ mod tests {
         touch(r, "app/src/main/kotlin/com/example/app/data/AppDatabase.kt");
         touch(r, "core/src/main/java/com/example/app/Helper.kt"); // .kt under java/
         touch(r, "app/src/main/kotlin/com/example/app/MainKt.kt"); // top-level funcs file
-        // duplicate filename across two modules (same package)
+                                                                   // duplicate filename across two modules (same package)
         touch(r, "app/src/main/kotlin/com/example/app/Dup.kt");
         touch(r, "lib/src/main/kotlin/com/example/app/Dup.kt");
         // generated output that must be ignored
@@ -259,7 +265,8 @@ mod tests {
             Some("app/src/main/kotlin/com/example/app/MainActivity.kt")
         );
         assert_eq!(
-            res.resolve("com/example/app/data", "AppDatabase.kt").as_deref(),
+            res.resolve("com/example/app/data", "AppDatabase.kt")
+                .as_deref(),
             Some("app/src/main/kotlin/com/example/app/data/AppDatabase.kt")
         );
     }

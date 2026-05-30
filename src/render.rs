@@ -151,7 +151,11 @@ impl Renderer {
             String::new()
         };
         let prefix = if self.show_tag {
-            format!("{time}{} {} ", self.chip(level), self.tag_cell(tag, changed, lc))
+            format!(
+                "{time}{} {} ",
+                self.chip(level),
+                self.tag_cell(tag, changed, lc)
+            )
         } else {
             format!("{time}{} ", self.chip(level))
         };
@@ -234,7 +238,9 @@ impl Renderer {
         let letter = level.letter();
         let fg = level_fg(level);
         match self.opts.chip {
-            ChipStyle::Reverse => paint(self.opts.color, &format!("7;{fg}"), &format!(" {letter} ")),
+            ChipStyle::Reverse => {
+                paint(self.opts.color, &format!("7;{fg}"), &format!(" {letter} "))
+            }
             ChipStyle::Bracket => paint(self.opts.color, fg, &format!("[{letter}]")),
             ChipStyle::Bar => format!("{} {letter}", paint(self.opts.color, fg, "▌")),
         }
@@ -242,7 +248,11 @@ impl Renderer {
 
     fn tag_cell(&self, tag: &str, changed: bool, lc: &str) -> String {
         let w = self.tag_w;
-        let text = if changed { truncate(tag, w) } else { String::new() };
+        let text = if changed {
+            truncate(tag, w)
+        } else {
+            String::new()
+        };
         let padded = match self.opts.tag_align {
             TagAlign::Right => format!("{text:>w$}"),
             TagAlign::Left => format!("{text:<w$}"),
@@ -270,7 +280,10 @@ impl Renderer {
             paint(c, lc, &format!("  {t}"))
         } else if let Some(frame) = parse_frame(t) {
             self.frame_line(&frame, lc)
-        } else if t.starts_with("Caused by:") || t.starts_with("Suppressed:") || is_exception_header(t) {
+        } else if t.starts_with("Caused by:")
+            || t.starts_with("Suppressed:")
+            || is_exception_header(t)
+        {
             paint(c, &bold, t)
         } else {
             paint(c, lc, t) // e.g. "Process: …, PID:" header
@@ -360,7 +373,11 @@ fn wrap_words(text: &str, width: usize) -> Vec<String> {
             }
             continue;
         }
-        let projected = if cur.is_empty() { wlen } else { cur_len + 1 + wlen };
+        let projected = if cur.is_empty() {
+            wlen
+        } else {
+            cur_len + 1 + wlen
+        };
         if projected <= width {
             if !cur.is_empty() {
                 cur.push(' ');
@@ -435,25 +452,35 @@ mod tests {
     fn deduped_record_shows_count_suffix() {
         let mut r = Renderer::new(RenderOptions::spec(false, 80));
         let mut out = Vec::new();
-        r.render_counted(&rec(Level::Info, "T", "tick"), 5, &mut out).unwrap();
+        r.render_counted(&rec(Level::Info, "T", "tick"), 5, &mut out)
+            .unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("tick") && text.contains("×5"), "{text:?}");
     }
 
     #[test]
     fn no_color_means_no_escape_bytes() {
-        let got = render(&[rec(Level::Error, "Boom", "kaboom")], RenderOptions::spec(false, 80));
+        let got = render(
+            &[rec(Level::Error, "Boom", "kaboom")],
+            RenderOptions::spec(false, 80),
+        );
         assert!(!got.contains('\x1b'));
     }
 
     #[test]
     fn whole_line_painted_in_level_color() {
         // Error -> red (31) tag + message; Warn -> yellow (33).
-        let err = render(&[rec(Level::Error, "Boom", "kaboom")], RenderOptions::spec(true, 80));
+        let err = render(
+            &[rec(Level::Error, "Boom", "kaboom")],
+            RenderOptions::spec(true, 80),
+        );
         assert!(err.contains("\x1b[31mkaboom\x1b[0m"), "{err:?}");
         assert!(err.contains("\x1b[31m") && err.contains("Boom"));
 
-        let warn = render(&[rec(Level::Warn, "W", "careful")], RenderOptions::spec(true, 80));
+        let warn = render(
+            &[rec(Level::Warn, "W", "careful")],
+            RenderOptions::spec(true, 80),
+        );
         assert!(warn.contains("\x1b[33mcareful\x1b[0m"), "{warn:?}");
     }
 
@@ -500,7 +527,9 @@ mod tests {
 
         // App frame: rewritten to a worktree-relative clickable token.
         assert!(
-            text.contains("at MainActivity.onCreate   app/src/main/kotlin/com/example/app/MainActivity.kt:42"),
+            text.contains(
+                "at MainActivity.onCreate   app/src/main/kotlin/com/example/app/MainActivity.kt:42"
+            ),
             "{text}"
         );
         // Framework frame: dimmed full FQN, embedded (Activity.java:8000) dropped so
@@ -542,10 +571,16 @@ mod tests {
     fn narrow_pane_drops_the_tag_column() {
         let mut r = Renderer::new(RenderOptions::spec(false, 24));
         let mut out = Vec::new();
-        r.render(&rec(Level::Info, "VeryLongTagName", "hello there"), &mut out)
-            .unwrap();
+        r.render(
+            &rec(Level::Info, "VeryLongTagName", "hello there"),
+            &mut out,
+        )
+        .unwrap();
         let text = String::from_utf8(out).unwrap();
-        assert!(!text.contains("VeryLongTagName"), "tag should be dropped: {text:?}");
+        assert!(
+            !text.contains("VeryLongTagName"),
+            "tag should be dropped: {text:?}"
+        );
         assert!(text.contains("hello"));
     }
 
@@ -566,12 +601,19 @@ mod tests {
         r.render(&rec(Level::Info, "MyApp", "x"), &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         // " I " + " " + right-aligned(17) + " " + "x"
-        assert!(text.starts_with(&format!("{} {:>17} x", " I ", "MyApp")), "{text:?}");
+        assert!(
+            text.starts_with(&format!("{} {:>17} x", " I ", "MyApp")),
+            "{text:?}"
+        );
     }
 
     #[test]
     fn long_message_wraps_with_hanging_indent() {
-        let emits = [rec(Level::Info, "T", "alpha beta gamma delta epsilon zeta eta theta iota kappa")];
+        let emits = [rec(
+            Level::Info,
+            "T",
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+        )];
         let got = render(&emits, RenderOptions::spec(false, 40));
         let lines: Vec<&str> = got.lines().collect();
         assert!(lines.len() >= 2, "expected wrap: {got:?}");

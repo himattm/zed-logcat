@@ -32,7 +32,10 @@ fn main() {
     );
     println!("  6. after a wide tag column           SomeReallyLongTagName  {path}:10:1");
     println!("  7. path containing '+'     odd+dir/{path}:10:1   (expected: NOT clickable)");
-    println!("  8. absolute path           {}:10:1", std::env::current_dir().unwrap().join(&path).display());
+    println!(
+        "  8. absolute path           {}:10:1",
+        std::env::current_dir().unwrap().join(&path).display()
+    );
 
     println!(
         "\nExpectation from prior research: #2 (path:line:col), bare/relative, reset-isolated,\n\
