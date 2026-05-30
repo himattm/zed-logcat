@@ -71,14 +71,32 @@ pub struct Renderer {
     opts: RenderOptions,
     last_tag: Option<String>,
     resolver: Resolver,
+    /// Whether the tag column is shown (dropped on very narrow panes).
+    show_tag: bool,
+    /// Effective tag width after width adaptation.
+    tag_w: usize,
 }
 
 impl Renderer {
     pub fn new(opts: RenderOptions) -> Self {
+        // Adapt to the terminal width: shrink the tag column to keep at least MIN_MSG
+        // columns for the message, and drop it entirely when even a tiny tag won't fit.
+        const MIN_MSG: usize = 20;
+        const MIN_TAG: usize = 6;
+        let time_w = if opts.show_time { TIME_W } else { 0 };
+        let fixed = time_w + CHIP_W + 1 + 1; // time + chip + the two column separators
+        let budget = opts.width.saturating_sub(fixed + MIN_MSG);
+        let (show_tag, tag_w) = if budget < MIN_TAG {
+            (false, 0)
+        } else {
+            (true, opts.tag_width.min(budget))
+        };
         Self {
             opts,
             last_tag: None,
             resolver: Resolver::disabled(),
+            show_tag,
+            tag_w,
         }
     }
 
@@ -110,7 +128,8 @@ impl Renderer {
     /// Left offset of the message column (where continuation/wrapped lines align).
     fn indent(&self) -> usize {
         let time = if self.opts.show_time { TIME_W } else { 0 };
-        time + CHIP_W + 1 + self.opts.tag_width + 1
+        let tag = if self.show_tag { self.tag_w + 1 } else { 0 };
+        time + CHIP_W + 1 + tag
     }
 
     fn record_line<W: Write>(
@@ -131,7 +150,11 @@ impl Renderer {
         } else {
             String::new()
         };
-        let prefix = format!("{time}{} {} ", self.chip(level), self.tag_cell(tag, changed, lc));
+        let prefix = if self.show_tag {
+            format!("{time}{} {} ", self.chip(level), self.tag_cell(tag, changed, lc))
+        } else {
+            format!("{time}{} ", self.chip(level))
+        };
         let indent = self.indent();
         let avail = self.opts.width.saturating_sub(indent).max(8);
 
@@ -172,7 +195,8 @@ impl Renderer {
         // sits flush with the chip's right edge. Message column is unchanged.
         let blank_chip = " ".repeat(CHIP_W - 1);
         let conn = paint(self.opts.color, lc, &self.opts.connector.to_string());
-        let rest = " ".repeat(1 + self.opts.tag_width + 1);
+        let rest_w = if self.show_tag { 1 + self.tag_w + 1 } else { 1 };
+        let rest = " ".repeat(rest_w);
         format!("{time}{blank_chip}{conn}{rest}")
     }
 
@@ -217,7 +241,7 @@ impl Renderer {
     }
 
     fn tag_cell(&self, tag: &str, changed: bool, lc: &str) -> String {
-        let w = self.opts.tag_width;
+        let w = self.tag_w;
         let text = if changed { truncate(tag, w) } else { String::new() };
         let padded = match self.opts.tag_align {
             TagAlign::Right => format!("{text:>w$}"),
@@ -512,6 +536,37 @@ mod tests {
         r.render(&trace, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("looks minified"), "{text}");
+    }
+
+    #[test]
+    fn narrow_pane_drops_the_tag_column() {
+        let mut r = Renderer::new(RenderOptions::spec(false, 24));
+        let mut out = Vec::new();
+        r.render(&rec(Level::Info, "VeryLongTagName", "hello there"), &mut out)
+            .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(!text.contains("VeryLongTagName"), "tag should be dropped: {text:?}");
+        assert!(text.contains("hello"));
+    }
+
+    #[test]
+    fn pathologically_small_width_does_not_panic() {
+        let mut r = Renderer::new(RenderOptions::spec(false, 1));
+        let mut out = Vec::new();
+        r.render(&rec(Level::Warn, "T", "a b c d e f g h"), &mut out)
+            .unwrap();
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn wide_pane_keeps_the_configured_tag_width() {
+        // At width 120, the tag column is the full configured 17.
+        let mut r = Renderer::new(RenderOptions::spec(false, 120));
+        let mut out = Vec::new();
+        r.render(&rec(Level::Info, "MyApp", "x"), &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        // " I " + " " + right-aligned(17) + " " + "x"
+        assert!(text.starts_with(&format!("{} {:>17} x", " I ", "MyApp")), "{text:?}");
     }
 
     #[test]

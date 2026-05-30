@@ -81,8 +81,11 @@ impl Args {
             }
         };
 
+        // Prefer the live PTY width (a Zed pane); fall back to $COLUMNS when stdout is
+        // not a terminal (piped / headless), else 80.
         let width = terminal_size::terminal_size()
             .map(|(w, _)| w.0 as usize)
+            .or_else(|| std::env::var("COLUMNS").ok().and_then(|s| s.parse().ok()))
             .unwrap_or(80);
 
         let root = resolve_root(self.root);
