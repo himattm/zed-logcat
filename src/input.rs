@@ -1,20 +1,22 @@
 //! Input sources: read a piped stdin, or spawn `adb logcat` and own its lifecycle.
 //!
 //! The source is chosen once in `Config` (pidcat-style: a piped stdin is read
-//! directly, otherwise we run adb). Both paths yield the same thing — an iterator
-//! of `io::Result<String>` lines — so the rest of the pipeline never knows which
-//! source it is draining.
+//! directly, otherwise we run adb). The stdin path is a plain blocking line iterator;
+//! the live path delivers lines over a bounded channel from a reader thread, so the
+//! main loop can `recv_timeout` and flush pending traces/dedup-runs on idle (a live
+//! tail has no EOF, and a crash is usually the last thing emitted before a process
+//! goes quiet).
 //!
-//! Process hygiene: `std::process::Child` does NOT kill the child on drop, and a
-//! bare Ctrl-C would orphan `adb logcat` (leaving a logcat reader open against the
-//! device). We therefore (1) put adb in its own process group and kill the group
-//! from the signal handler, and (2) kill+reap on `Drop` to cover every other exit
-//! path.
+//! Process hygiene: `std::process::Child` does NOT kill the child on drop, and a bare
+//! Ctrl-C would orphan `adb logcat`. We put adb in its own process group and kill the
+//! group from the signal handler, and kill+reap on `Drop` for every other exit path.
 
 use std::collections::HashSet;
 use std::io::{self, BufRead, BufReader};
-use std::process::{Child, ChildStdout, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError};
+use std::time::Duration;
 
 use anyhow::Context;
 
@@ -37,16 +39,37 @@ pub fn kill_child_group() {
     }
 }
 
-/// Build the line source dictated by `Config`.
-pub fn make_source(cfg: &Config) -> anyhow::Result<Box<dyn Iterator<Item = io::Result<String>>>> {
-    if cfg.read_stdin {
-        Ok(Box::new(BufReader::new(io::stdin()).lines()))
-    } else {
-        Ok(Box::new(spawn_adb(cfg)?))
+/// Blocking line iterator over stdin (the piped-input path).
+pub fn stdin_lines() -> impl Iterator<Item = io::Result<String>> {
+    BufReader::new(io::stdin()).lines()
+}
+
+/// A live `adb logcat` stream: lines arrive over a bounded channel from a reader
+/// thread; the child is killed+reaped on drop.
+pub struct AdbStream {
+    rx: Receiver<io::Result<String>>,
+    child: Child,
+}
+
+impl AdbStream {
+    /// Receive the next line, or time out so the caller can flush on idle.
+    pub fn recv_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<io::Result<String>, RecvTimeoutError> {
+        self.rx.recv_timeout(timeout)
     }
 }
 
-fn spawn_adb(cfg: &Config) -> anyhow::Result<AdbLines> {
+impl Drop for AdbStream {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        CHILD_PGID.store(0, Ordering::SeqCst);
+    }
+}
+
+pub fn spawn_adb_stream(cfg: &Config) -> anyhow::Result<AdbStream> {
     // Clearing the buffer is a separate one-shot invocation that runs and exits.
     if cfg.clear {
         let mut clear = base_command(cfg);
@@ -56,7 +79,6 @@ fn spawn_adb(cfg: &Config) -> anyhow::Result<AdbLines> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // A failure here (e.g. nothing to clear) should not abort the tail.
         let _ = clear.status();
     }
 
@@ -91,7 +113,7 @@ fn spawn_adb(cfg: &Config) -> anyhow::Result<AdbLines> {
     CHILD_PGID.store(child.id() as i32, Ordering::SeqCst);
 
     // Drain adb's stderr on its own thread so the pipe never fills (which would
-    // deadlock adb) and so device warnings ("waiting for device") surface promptly.
+    // deadlock adb) and device warnings ("waiting for device") surface promptly.
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
             for line in BufReader::new(stderr).lines() {
@@ -104,10 +126,19 @@ fn spawn_adb(cfg: &Config) -> anyhow::Result<AdbLines> {
     }
 
     let stdout = child.stdout.take().expect("stdout was piped");
-    Ok(AdbLines {
-        child,
-        lines: BufReader::new(stdout).lines(),
-    })
+    // Bounded so a flood backpressures the reader (and thus adb) instead of growing
+    // memory without bound.
+    let (tx, rx) = sync_channel::<io::Result<String>>(1024);
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if tx.send(line).is_err() {
+                break; // receiver gone — main loop exited
+            }
+        }
+        // tx dropped here -> rx disconnects, signalling EOF / child exit.
+    });
+
+    Ok(AdbStream { rx, child })
 }
 
 fn base_command(cfg: &Config) -> Command {
@@ -137,25 +168,4 @@ pub fn seed_pids(cfg: &Config) -> HashSet<u32> {
         }
     }
     pids
-}
-
-/// Owning iterator over `adb logcat` stdout that kills+reaps the child when dropped.
-struct AdbLines {
-    child: Child,
-    lines: io::Lines<BufReader<ChildStdout>>,
-}
-
-impl Iterator for AdbLines {
-    type Item = io::Result<String>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.lines.next()
-    }
-}
-
-impl Drop for AdbLines {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        CHILD_PGID.store(0, Ordering::SeqCst);
-    }
 }
