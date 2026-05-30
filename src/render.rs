@@ -149,9 +149,11 @@ impl Renderer {
         } else {
             String::new()
         };
-        let blank_chip = " ".repeat(CHIP_W);
+        // Connector lands in the chip's rightmost cell; a right-edge glyph (▐/▕) then
+        // sits flush with the chip's right edge. Message column is unchanged.
+        let blank_chip = " ".repeat(CHIP_W - 1);
         let conn = paint(self.opts.color, lc, &self.opts.connector.to_string());
-        let rest = " ".repeat(self.opts.tag_width + 1);
+        let rest = " ".repeat(1 + self.opts.tag_width + 1);
         format!("{time}{blank_chip}{conn}{rest}")
     }
 
@@ -447,8 +449,8 @@ mod tests {
         let got = render(&emits, RenderOptions::spec(false, 40));
         let lines: Vec<&str> = got.lines().collect();
         assert!(lines.len() >= 2, "expected wrap: {got:?}");
-        // continuation: blank chip slot, connector at the chip's right edge, then text.
-        assert!(lines[1].starts_with("   ┃"), "{:?}", lines[1]);
+        // continuation: connector in the chip's rightmost cell, then text aligns.
+        assert!(lines[1].starts_with("  ┃"), "{:?}", lines[1]);
         assert!(lines[1].chars().any(|c| !c.is_whitespace() && c != '┃'));
     }
 }
