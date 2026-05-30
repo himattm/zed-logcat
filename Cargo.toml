@@ -3,7 +3,7 @@ name = "zlc"
 version = "0.0.1"
 edition = "2021"
 description = "Readable, navigable Android logcat for the Zed editor (zed-logcat)"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 repository = "https://github.com/himattm/zed-logcat"
 readme = "README.md"
 

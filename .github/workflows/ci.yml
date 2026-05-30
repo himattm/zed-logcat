@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # fmt + clippy + the full test suite. adb is naturally ABSENT from the runner, so
+  # this also proves zlc's device-independence (the whole suite runs with no adb).
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Assert adb is NOT on PATH (test-suite invariant)
+        run: |
+          if command -v adb >/dev/null 2>&1; then
+            echo "::error::adb unexpectedly present: $(command -v adb)"; exit 1
+          fi
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-features
+
+  # Prove the binary cross-builds and that the Linux musl artifacts are fully static,
+  # on every target we ship.
+  build:
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14         # Apple-silicon runner
+            musl: false
+          - target: x86_64-apple-darwin
+            os: macos-15-intel   # last Intel macOS runner
+            musl: false
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            musl: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04
+            musl: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      # zig bundles the C toolchain/sysroot so both musl targets cross-build on x86_64
+      # with no Docker/QEMU (zlc has no native C deps).
+      - name: Install cargo-zigbuild
+        if: matrix.musl
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - name: Build (musl, static)
+        if: matrix.musl
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo zigbuild --release --target ${{ matrix.target }}
+      - name: Build (native macOS)
+        if: ${{ !matrix.musl }}
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Assert static linkage (musl)
+        if: matrix.musl
+        run: |
+          BIN="target/${{ matrix.target }}/release/zlc"
+          file "$BIN"
+          if file "$BIN" | grep -qE 'dynamically linked|interpreter'; then
+            echo "::error::$BIN is not static"; exit 1
+          fi
+          file "$BIN" | grep -q 'statically linked' \
+            || { echo "::error::file did not confirm static linkage"; exit 1; }
