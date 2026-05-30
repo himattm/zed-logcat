@@ -13,6 +13,7 @@
 use std::io::{self, Write};
 
 use crate::model::Level;
+use crate::resolve::{parse_frame, Frame, Resolver};
 use crate::trace::{is_exception_header, Emit, Trace};
 
 #[derive(Clone, Copy, Debug)]
@@ -40,6 +41,9 @@ pub struct RenderOptions {
     pub wrap: bool,
     pub chip: ChipStyle,
     pub tag_align: TagAlign,
+    /// Glyph drawn in the chip column on continuation lines (wrapped messages and
+    /// trace bodies) so a multi-line block reads as one connected unit.
+    pub connector: char,
 }
 
 impl RenderOptions {
@@ -53,6 +57,7 @@ impl RenderOptions {
             wrap: true,
             chip: ChipStyle::Reverse,
             tag_align: TagAlign::Right,
+            connector: '┃',
         }
     }
 }
@@ -65,6 +70,7 @@ const TIME_W: usize = 13;
 pub struct Renderer {
     opts: RenderOptions,
     last_tag: Option<String>,
+    resolver: Resolver,
 }
 
 impl Renderer {
@@ -72,7 +78,13 @@ impl Renderer {
         Self {
             opts,
             last_tag: None,
+            resolver: Resolver::disabled(),
         }
+    }
+
+    /// Attach a resolver so app stack frames become clickable worktree-relative paths.
+    pub fn set_resolver(&mut self, resolver: Resolver) {
+        self.resolver = resolver;
     }
 
     pub fn render<W: Write>(&mut self, emit: &Emit, out: &mut W) -> io::Result<()> {
@@ -121,20 +133,33 @@ impl Renderer {
             if i == 0 {
                 writeln!(out, "{prefix}{painted}")?;
             } else {
-                writeln!(out, "{:width$}{painted}", "", width = indent)?;
+                writeln!(out, "{}{painted}", self.cont_prefix(lc))?;
             }
         }
         Ok(())
     }
 
+    /// Indent for continuation lines: a blank time column, the connector glyph in the
+    /// chip column (painted in the block's level color), then blanks to the message
+    /// column. Total visible width equals [`Self::indent`].
+    fn cont_prefix(&self, lc: &str) -> String {
+        let time = if self.opts.show_time {
+            " ".repeat(TIME_W)
+        } else {
+            String::new()
+        };
+        let conn = paint(self.opts.color, lc, &format!(" {} ", self.opts.connector));
+        let rest = " ".repeat(1 + self.opts.tag_width + 1);
+        format!("{time}{conn}{rest}")
+    }
+
     fn trace_block<W: Write>(&mut self, t: &Trace, out: &mut W) -> io::Result<()> {
         let head = &t.records[0];
         self.record_line(head.level, &head.ts, &head.tag, &head.msg, out)?;
-        let indent = self.indent();
         let lc = level_fg(head.level);
         for rec in &t.records[1..] {
             let body = self.trace_line(&rec.msg, lc);
-            writeln!(out, "{:width$}{body}", "", width = indent)?;
+            writeln!(out, "{}{body}", self.cont_prefix(lc))?;
         }
         Ok(())
     }
@@ -173,19 +198,39 @@ impl Renderer {
     }
 
     /// Trace continuation lines, painted in the block's level color (`lc`). The
-    /// exception type and `Caused by:`/`Suppressed:` delimiters are bolded within
-    /// that color; frames are slightly indented.
+    /// exception type and `Caused by:`/`Suppressed:` delimiters are bolded; frames are
+    /// rewritten ([`Self::frame_line`]); `… N more` is dimmed-indented.
     fn trace_line(&self, msg: &str, lc: &str) -> String {
         let t = msg.trim_start();
         let c = self.opts.color;
         let bold = format!("1;{lc}");
-        if t.starts_with("at ") || (t.starts_with("...") && t.ends_with("more")) {
-            paint(c, lc, &format!("  {t}")) // slightly indented frame / elision
+        if t.starts_with("...") && t.ends_with("more") {
+            paint(c, lc, &format!("  {t}"))
+        } else if let Some(frame) = parse_frame(t) {
+            self.frame_line(&frame, lc)
         } else if t.starts_with("Caused by:") || t.starts_with("Suppressed:") || is_exception_header(t) {
             paint(c, &bold, t)
         } else {
             paint(c, lc, t) // e.g. "Process: …, PID:" header
         }
+    }
+
+    /// Render one stack frame. App/owned frames (resolvable under a worktree source
+    /// root) show `at Class.method   <relative-path>:line`, with the path token left
+    /// UNSTYLED and space-isolated so Zed's detector links exactly it. Framework /
+    /// unresolved frames are dimmed and keep their full FQN, with the embedded
+    /// `(File.ext:NN)` dropped so Zed has no token to dead-click.
+    fn frame_line(&self, f: &Frame, lc: &str) -> String {
+        let c = self.opts.color;
+        if let (Some(file), Some(line)) = (f.file.as_deref(), f.line) {
+            if let Some(rel) = self.resolver.resolve(&f.pkg_path, file) {
+                let head = paint(c, lc, &format!("  at {}", f.short));
+                // The reset that `paint` appends leaves the token in the terminal's
+                // default style — bare, space-surrounded, exactly what Zed links.
+                return format!("{head}   {rel}:{line}");
+            }
+        }
+        paint(c, "2", &format!("  at {}", f.fqmethod))
     }
 }
 
@@ -342,13 +387,66 @@ mod tests {
     }
 
     #[test]
+    fn app_frame_becomes_clickable_token_and_framework_is_neutralized() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let f = dir
+            .path()
+            .join("app/src/main/kotlin/com/example/app/MainActivity.kt");
+        fs::create_dir_all(f.parent().unwrap()).unwrap();
+        fs::write(&f, "// stub\n").unwrap();
+
+        let base = LogRecord {
+            ts: "05-30 12:00:01.000".to_string(),
+            pid: 1,
+            tid: 1,
+            uid: None,
+            level: Level::Error,
+            tag: "AndroidRuntime".to_string(),
+            msg: "FATAL EXCEPTION: main".to_string(),
+        };
+        let app_frame = LogRecord {
+            msg: "\tat com.example.app.MainActivity.onCreate(MainActivity.kt:42)".to_string(),
+            ..base.clone()
+        };
+        let fw_frame = LogRecord {
+            msg: "\tat android.app.Activity.performCreate(Activity.java:8000)".to_string(),
+            ..base.clone()
+        };
+        let trace = Emit::Trace(Trace {
+            is_fatal: true,
+            records: vec![base, app_frame, fw_frame],
+        });
+
+        let mut r = Renderer::new(RenderOptions::spec(false, 200));
+        r.set_resolver(crate::resolve::Resolver::new(dir.path().to_path_buf()));
+        let mut out = Vec::new();
+        r.render(&trace, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        // App frame: rewritten to a worktree-relative clickable token.
+        assert!(
+            text.contains("at MainActivity.onCreate   app/src/main/kotlin/com/example/app/MainActivity.kt:42"),
+            "{text}"
+        );
+        // Framework frame: dimmed full FQN, embedded (Activity.java:8000) dropped so
+        // Zed has no dead token to click.
+        assert!(text.contains("at android.app.Activity.performCreate"));
+        assert!(!text.contains("Activity.java:8000"));
+        // The only `path:line`-shaped token is the resolved app path.
+        assert_eq!(text.matches(".kt:42").count(), 1);
+    }
+
+    #[test]
     fn long_message_wraps_with_hanging_indent() {
         let emits = [rec(Level::Info, "T", "alpha beta gamma delta epsilon zeta eta theta iota kappa")];
         let got = render(&emits, RenderOptions::spec(false, 40));
         let lines: Vec<&str> = got.lines().collect();
         assert!(lines.len() >= 2, "expected wrap: {got:?}");
-        // continuation aligns under the message column (indent spaces).
-        let indent = Renderer::new(RenderOptions::spec(false, 40)).indent();
-        assert!(lines[1].starts_with(&" ".repeat(indent)));
+        // continuation starts with the connector glyph in the chip column, then aligns.
+        assert!(lines[1].starts_with(" ┃ "), "{:?}", lines[1]);
+        assert!(lines[1].chars().any(|c| !c.is_whitespace() && c != '┃'));
     }
 }

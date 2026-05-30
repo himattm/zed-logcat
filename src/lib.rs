@@ -11,6 +11,7 @@ pub mod input;
 pub mod model;
 pub mod parse;
 pub mod render;
+pub mod resolve;
 pub mod trace;
 
 use std::io::{self, Write};
@@ -18,6 +19,7 @@ use std::io::{self, Write};
 use config::Config;
 use parse::parse_line;
 use render::{RenderOptions, Renderer};
+use resolve::Resolver;
 use trace::Assembler;
 
 /// Core pipeline: parse each line, assemble multi-line traces, render to `out`.
@@ -33,6 +35,7 @@ where
 {
     let mut asm = Assembler::new();
     let mut renderer = Renderer::new(RenderOptions::spec(cfg.color, cfg.width));
+    renderer.set_resolver(Resolver::new(cfg.root.clone()));
 
     for line in lines {
         let line = line?;
