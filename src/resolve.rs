@@ -92,6 +92,18 @@ impl Resolver {
         }
     }
 
+    /// Like [`Self::new`] but with explicit source roots (from `zlc.toml`), skipping
+    /// auto-discovery. Relative roots are resolved against `root`.
+    pub fn with_source_roots(root: PathBuf, roots: Vec<PathBuf>) -> Self {
+        let resolver = Self::new(root.clone());
+        let abs = roots
+            .into_iter()
+            .map(|r| if r.is_absolute() { r } else { root.join(r) })
+            .collect();
+        let _ = resolver.source_roots.set(abs);
+        resolver
+    }
+
     /// A resolver that resolves nothing (used where there is no worktree, e.g. tests
     /// that exercise only layout). Every frame is treated as framework.
     pub fn disabled() -> Self {

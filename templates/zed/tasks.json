@@ -1,0 +1,29 @@
+[
+  {
+    "label": "Logcat: app",
+    "command": "zlc",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "no_focus",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "hide": "never"
+  },
+  {
+    "label": "Logcat: crash",
+    "command": "zlc",
+    "args": ["--crash"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "Logcat: clear + tail",
+    "command": "zlc",
+    "args": ["--clear"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "no_focus",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true
+  }
+]

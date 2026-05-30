@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-use crate::config::Config;
+use crate::config::{Config, FileConfig};
 use crate::model::Level;
 
 #[derive(Parser, Debug)]
@@ -85,30 +85,50 @@ impl Args {
             .map(|(w, _)| w.0 as usize)
             .unwrap_or(80);
 
-        let min_level = self
-            .min_level
-            .as_deref()
-            .and_then(|s| s.chars().next())
-            .map(|c| c.to_ascii_uppercase())
-            .and_then(Level::from_char)
+        let root = resolve_root(self.root);
+        let file = FileConfig::load(&root)?;
+
+        // CLI overrides file overrides built-in default.
+        let packages = if self.package.is_empty() {
+            file.app_packages
+        } else {
+            self.package
+        };
+        let mut tag_excludes = file.mute_tags; // persistent mutes always apply…
+        tag_excludes.extend(self.exclude_tag); // …plus this run's -T.
+        let min_level = parse_level(self.min_level.as_deref().or(file.min_level.as_deref()))
             .unwrap_or(Level::Verbose);
+        let dedupe = if self.no_dedupe {
+            false
+        } else {
+            file.dedupe.unwrap_or(true)
+        };
 
         Ok(Config {
             serial: self.serial,
             clear: self.clear,
             crash: self.crash,
-            root: resolve_root(self.root),
+            root,
             color,
             width,
             read_stdin,
-            packages: self.package,
+            packages,
             tag_includes: self.tag,
-            tag_excludes: self.exclude_tag,
+            tag_excludes,
             min_level,
-            dedupe: !self.no_dedupe,
+            dedupe,
+            tag_width: file.tag_width.unwrap_or(17),
+            wrap: file.wrap.unwrap_or(true),
+            source_roots: file.source_roots,
             seed_pids: HashSet::new(),
         })
     }
+}
+
+fn parse_level(s: Option<&str>) -> Option<Level> {
+    s.and_then(|s| s.chars().next())
+        .map(|c| c.to_ascii_uppercase())
+        .and_then(Level::from_char)
 }
 
 /// `--root` precedence: explicit flag > $ZED_WORKTREE_ROOT > nearest Gradle root > cwd.

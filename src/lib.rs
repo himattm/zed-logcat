@@ -18,6 +18,7 @@ pub mod resolve;
 pub mod trace;
 
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 use config::Config;
 use dedupe::Deduper;
@@ -48,8 +49,20 @@ where
         cfg.min_level,
     )?;
     let mut deduper = Deduper::new(cfg.dedupe);
-    let mut renderer = Renderer::new(RenderOptions::spec(cfg.color, cfg.width));
-    renderer.set_resolver(Resolver::new(cfg.root.clone()));
+
+    let mut opts = RenderOptions::spec(cfg.color, cfg.width);
+    opts.tag_width = cfg.tag_width;
+    opts.wrap = cfg.wrap;
+    let mut renderer = Renderer::new(opts);
+
+    // Explicit source roots from zlc.toml short-circuit auto-discovery.
+    let resolver = if cfg.source_roots.is_empty() {
+        Resolver::new(cfg.root.clone())
+    } else {
+        let roots = cfg.source_roots.iter().map(PathBuf::from).collect();
+        Resolver::with_source_roots(cfg.root.clone(), roots)
+    };
+    renderer.set_resolver(resolver);
 
     for line in lines {
         let line = line?;
@@ -132,6 +145,9 @@ mod tests {
             tag_excludes: Vec::new(),
             min_level: Level::Verbose,
             dedupe: true,
+            tag_width: 17,
+            wrap: true,
+            source_roots: Vec::new(),
             seed_pids: std::collections::HashSet::new(),
         }
     }

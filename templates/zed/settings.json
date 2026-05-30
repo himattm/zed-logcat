@@ -1,0 +1,13 @@
+{
+  // zed-logcat link hardening (Zed reads this file as JSONC, so comments are fine).
+  //
+  // Zed's built-in terminal link detection already opens the bare `path:line` tokens
+  // zlc emits on Cmd/Ctrl+click, so this is belt-and-suspenders for source paths the
+  // built-in heuristic might miss. If links ever stop resolving after a Zed update,
+  // verify the capture-group names (path/line) against your Zed version.
+  "terminal": {
+    "path_hyperlink_regexes": [
+      "(?<path>[\\w./+-]+\\.(?:kt|kts|java|xml|gradle))(?::(?<line>\\d+))?"
+    ]
+  }
+}

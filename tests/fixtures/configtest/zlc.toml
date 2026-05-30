@@ -1,0 +1,3 @@
+# Fixture config for the end-to-end config test: mute OkHttp.
+mute_tags = ["OkHttp"]
+min_level = "V"

@@ -61,10 +61,12 @@ fn spawn_adb(cfg: &Config) -> anyhow::Result<AdbLines> {
     }
 
     let mut cmd = base_command(cfg);
-    cmd.arg("logcat")
-        .arg("-v")
-        .arg("threadtime")
-        .stdin(Stdio::null())
+    cmd.arg("logcat").arg("-v").arg("threadtime");
+    if cfg.crash {
+        // Focus on the crash buffer (uncaught fatal exceptions + wtf).
+        cmd.arg("-b").arg("crash");
+    }
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

@@ -1,0 +1,25 @@
+# zed-logcat project config — commit this so your team shares one setup.
+# All fields are optional; command-line flags override them.
+
+# App package(s) to follow. Enables app-only filtering and PID tracking
+# (pkg:process sub-processes are included). Equivalent to `-p`.
+app_packages = ["com.example.app"]
+
+# Source roots used to resolve clickable stack frames. Empty = auto-discover
+# src/*/{java,kotlin} under the worktree (excluding build/ generated output).
+source_roots = []
+
+# Minimum level to show: V, D, I, W, E, or F.
+min_level = "V"
+
+# Collapse consecutive identical lines into a ×N counter.
+dedupe = true
+
+# Tag column width.
+tag_width = 17
+
+# Wrap long messages with a hanging indent under the message column.
+wrap = true
+
+# Tags to always mute (merged with any -T exclusions on the command line).
+mute_tags = []
