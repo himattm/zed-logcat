@@ -29,7 +29,8 @@ pub struct Args {
     #[arg(short = 'c', long = "clear")]
     pub clear: bool,
 
-    /// Crash view (reserved; wired in a later phase).
+    /// Crash view: read the crash buffer (adb logcat -b crash) — uncaught fatal
+    /// exceptions + wtf. Applies when zlc runs adb itself.
     #[arg(long = "crash")]
     pub crash: bool,
 
