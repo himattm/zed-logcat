@@ -1,11 +1,13 @@
 //! Command-line surface and resolution of flags + ambient state into `Config`.
 
+use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
 use crate::config::Config;
+use crate::model::Level;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -34,6 +36,23 @@ pub struct Args {
     /// When to colorize output.
     #[arg(long = "color", value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
+
+    /// Only show logs from this app package (repeatable). Enables app-only
+    /// filtering and PID following; `pkg:process` sub-processes are included.
+    #[arg(short = 'p', long = "package", value_name = "PKG")]
+    pub package: Vec<String>,
+
+    /// Include only tags matching this glob (repeatable). Crashes bypass this.
+    #[arg(short = 't', long = "tag", value_name = "GLOB")]
+    pub tag: Vec<String>,
+
+    /// Exclude tags matching this glob (repeatable). Crashes bypass this.
+    #[arg(short = 'T', long = "exclude-tag", value_name = "GLOB")]
+    pub exclude_tag: Vec<String>,
+
+    /// Minimum level to show: V, D, I, W, E, or F (default: V).
+    #[arg(short = 'm', long = "min-level", value_name = "LEVEL")]
+    pub min_level: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -62,6 +81,14 @@ impl Args {
             .map(|(w, _)| w.0 as usize)
             .unwrap_or(80);
 
+        let min_level = self
+            .min_level
+            .as_deref()
+            .and_then(|s| s.chars().next())
+            .map(|c| c.to_ascii_uppercase())
+            .and_then(Level::from_char)
+            .unwrap_or(Level::Verbose);
+
         Ok(Config {
             serial: self.serial,
             clear: self.clear,
@@ -70,6 +97,11 @@ impl Args {
             color,
             width,
             read_stdin,
+            packages: self.package,
+            tag_includes: self.tag,
+            tag_excludes: self.exclude_tag,
+            min_level,
+            seed_pids: HashSet::new(),
         })
     }
 }

@@ -831,6 +831,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "ctrlc",
+ "globset",
  "ignore",
  "libc",
  "regex",

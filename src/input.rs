@@ -11,6 +11,7 @@
 //! from the signal handler, and (2) kill+reap on `Drop` to cover every other exit
 //! path.
 
+use std::collections::HashSet;
 use std::io::{self, BufRead, BufReader};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -113,6 +114,27 @@ fn base_command(cfg: &Config) -> Command {
         cmd.arg("-s").arg(serial);
     }
     cmd
+}
+
+/// Seed the followed PID set for an already-running app via `adb shell pidof <pkg>`.
+/// Best-effort: a missing/failed `pidof` just yields no seed (ActivityManager lines
+/// then pick the app up on its next (re)launch).
+pub fn seed_pids(cfg: &Config) -> HashSet<u32> {
+    let mut pids = HashSet::new();
+    for pkg in &cfg.packages {
+        let mut cmd = base_command(cfg);
+        cmd.arg("shell").arg("pidof").arg(pkg);
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                for tok in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+                    if let Ok(pid) = tok.parse() {
+                        pids.insert(pid);
+                    }
+                }
+            }
+        }
+    }
+    pids
 }
 
 /// Owning iterator over `adb logcat` stdout that kills+reaps the child when dropped.

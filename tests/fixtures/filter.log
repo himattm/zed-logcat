@@ -1,0 +1,8 @@
+10-01 10:00:00.000   600   600 I ActivityManager: Start proc 4120:com.example.app/u0a123 for top-activity {com.example.app/.MainActivity}
+10-01 10:00:00.100  4120  4120 I MyApp: app started
+10-01 10:00:00.200  7777  7777 I Other: noise from another app
+10-01 10:00:00.300  4120  4155 D OkHttp: app network call
+10-01 10:00:01.000  4120  4120 E AndroidRuntime: FATAL EXCEPTION: main
+10-01 10:00:01.000  4120  4120 E AndroidRuntime: Process: com.example.app, PID: 4120
+10-01 10:00:01.000  4120  4120 E AndroidRuntime: java.lang.RuntimeException: boom
+10-01 10:00:01.000  4120  4120 E AndroidRuntime: 	at com.example.app.MainActivity.onCreate(MainActivity.kt:42)

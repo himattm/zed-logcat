@@ -37,6 +37,19 @@ impl Level {
             Self::Silent => 'S',
         }
     }
+
+    /// Severity rank for `min_level` comparisons (Verbose lowest, Silent highest).
+    pub fn rank(self) -> u8 {
+        match self {
+            Self::Verbose => 0,
+            Self::Debug => 1,
+            Self::Info => 2,
+            Self::Warn => 3,
+            Self::Error => 4,
+            Self::Fatal => 5,
+            Self::Silent => 6,
+        }
+    }
 }
 
 /// One parsed `-v threadtime` logcat record. The timestamp is kept as the raw
