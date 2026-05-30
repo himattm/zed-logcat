@@ -14,7 +14,7 @@ use std::io::{self, Write};
 
 use crate::model::Level;
 use crate::resolve::{parse_frame, Frame, Resolver};
-use crate::trace::{is_exception_header, Emit, Trace};
+use crate::trace::{is_exception_header, is_native_frame, Emit, Trace, TraceKind};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ChipStyle {
@@ -180,9 +180,22 @@ impl Renderer {
         let head = &t.records[0];
         self.record_line(head.level, &head.ts, &head.tag, &head.msg, 1, out)?;
         let lc = level_fg(head.level);
+        let mut minified = false;
         for rec in &t.records[1..] {
+            if parse_frame(rec.msg.trim_start()).is_some_and(|f| f.obfuscated) {
+                minified = true;
+            }
             let body = self.trace_line(&rec.msg, lc);
             writeln!(out, "{}{body}", self.cont_prefix(lc))?;
+        }
+        // R8/minified traces resolve to nothing; say so instead of just dimming.
+        if t.kind == TraceKind::Java && minified {
+            let hint = paint(
+                self.opts.color,
+                "2",
+                "↳ looks minified — deobfuscate with the R8 mapping.txt (retrace)",
+            );
+            writeln!(out, "{}{hint}", self.cont_prefix(lc))?;
         }
         Ok(())
     }
@@ -227,7 +240,9 @@ impl Renderer {
         let t = msg.trim_start();
         let c = self.opts.color;
         let bold = format!("1;{lc}");
-        if t.starts_with("...") && t.ends_with("more") {
+        if is_native_frame(t) {
+            paint(c, "2", &format!("  {t}")) // native backtrace frame — dim, non-navigable
+        } else if t.starts_with("...") && t.ends_with("more") {
             paint(c, lc, &format!("  {t}"))
         } else if let Some(frame) = parse_frame(t) {
             self.frame_line(&frame, lc)
@@ -449,6 +464,7 @@ mod tests {
         };
         let trace = Emit::Trace(Trace {
             is_fatal: true,
+            kind: TraceKind::Java,
             records: vec![base, app_frame, fw_frame],
         });
 
@@ -469,6 +485,33 @@ mod tests {
         assert!(!text.contains("Activity.java:8000"));
         // The only `path:line`-shaped token is the resolved app path.
         assert_eq!(text.matches(".kt:42").count(), 1);
+    }
+
+    #[test]
+    fn minified_trace_gets_a_retrace_hint() {
+        let base = LogRecord {
+            ts: "t".to_string(),
+            pid: 1,
+            tid: 1,
+            uid: None,
+            level: Level::Error,
+            tag: "AndroidRuntime".to_string(),
+            msg: "FATAL EXCEPTION: main".to_string(),
+        };
+        let obf = LogRecord {
+            msg: "\tat a.b.c(Unknown Source:0)".to_string(),
+            ..base.clone()
+        };
+        let trace = Emit::Trace(Trace {
+            is_fatal: true,
+            kind: TraceKind::Java,
+            records: vec![base, obf],
+        });
+        let mut r = Renderer::new(RenderOptions::spec(false, 200));
+        let mut out = Vec::new();
+        r.render(&trace, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("looks minified"), "{text}");
     }
 
     #[test]

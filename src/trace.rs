@@ -17,13 +17,24 @@ use regex::Regex;
 use crate::model::{Level, LogRecord};
 use crate::parse::ParsedLine;
 
+/// Whether an assembled block is a managed (ART) stack trace or a native crash
+/// backtrace (`#NN pc …` from debuggerd). Native frames have no source `file:line`
+/// and are never made clickable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TraceKind {
+    Java,
+    Native,
+}
+
 /// An assembled stack-trace block (header records + frames), kept in arrival order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trace {
     pub records: Vec<LogRecord>,
-    /// True when the block contains a `FATAL EXCEPTION` / `Process: …, PID:` header.
-    /// This is the precise signal the crash bypass uses (not a blanket "level E/F").
+    /// True when the block contains a `FATAL EXCEPTION` / `Process: …, PID:` header,
+    /// or is a native crash. This is the precise signal the crash bypass uses (not a
+    /// blanket "level E/F").
     pub is_fatal: bool,
+    pub kind: TraceKind,
 }
 
 impl Trace {
@@ -78,11 +89,16 @@ impl Assembler {
     fn push_record(&mut self, rec: LogRecord) -> Vec<Emit> {
         if let Some(pending) = self.pending.as_ref() {
             let (pid, tid) = pending.key();
-            let continues = rec.pid == pid
-                && rec.tid == tid
-                && (is_continuation(&rec.msg)
-                    || is_exception_header(&rec.msg)
-                    || is_fatal_header(&rec.msg));
+            let same_thread = rec.pid == pid && rec.tid == tid;
+            let continues = same_thread
+                && match pending.kind {
+                    TraceKind::Java => {
+                        is_continuation(&rec.msg)
+                            || is_exception_header(&rec.msg)
+                            || is_fatal_header(&rec.msg)
+                    }
+                    TraceKind::Native => is_native_frame(&rec.msg),
+                };
             if continues {
                 let pending = self.pending.as_mut().expect("checked above");
                 if is_fatal_header(&rec.msg) {
@@ -101,15 +117,23 @@ impl Assembler {
     }
 
     fn start_or_emit(&mut self, rec: LogRecord) -> Vec<Emit> {
-        // A trace begins at a FATAL header, or at an exception header logged at a
-        // severity where a real stack trace is plausible (E/F). Gating the
-        // exception-header start on level avoids treating an Info log that merely
-        // mentions "NullPointerException" as the head of a trace.
-        let starts = is_fatal_header(&rec.msg)
-            || (is_exception_header(&rec.msg) && matches!(rec.level, Level::Error | Level::Fatal));
-        if starts {
+        // A Java trace begins at a FATAL header, or at an exception header logged at a
+        // severity where a real stack trace is plausible (E/F) — gating on level avoids
+        // treating an Info log that merely mentions "NullPointerException" as a trace.
+        // A native crash backtrace begins at its first `#NN pc` frame.
+        if is_fatal_header(&rec.msg)
+            || (is_exception_header(&rec.msg) && matches!(rec.level, Level::Error | Level::Fatal))
+        {
             self.pending = Some(Trace {
                 is_fatal: is_fatal_header(&rec.msg),
+                kind: TraceKind::Java,
+                records: vec![rec],
+            });
+            Vec::new()
+        } else if is_native_frame(&rec.msg) {
+            self.pending = Some(Trace {
+                is_fatal: true, // a native crash always shows
+                kind: TraceKind::Native,
                 records: vec![rec],
             });
             Vec::new()
@@ -151,6 +175,13 @@ pub(crate) fn is_exception_header(msg: &str) -> bool {
 
 fn is_fatal_header(msg: &str) -> bool {
     msg.starts_with("FATAL EXCEPTION:") || (msg.starts_with("Process:") && msg.contains("PID:"))
+}
+
+/// A native crash backtrace frame, e.g. `#00 pc 0001234 /system/lib64/libc.so (…)`.
+static NATIVE_FRAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#\d+\s+pc\b").unwrap());
+
+pub(crate) fn is_native_frame(msg: &str) -> bool {
+    NATIVE_FRAME.is_match(msg.trim_start())
 }
 
 #[cfg(test)]
@@ -223,6 +254,27 @@ mod tests {
         let emits = assemble(&lines);
         assert_eq!(emits.len(), 1);
         assert!(matches!(&emits[0], Emit::Record(_)));
+    }
+
+    #[test]
+    fn assembles_native_backtrace_block() {
+        let lines = [
+            "10-01 10:00:00.000  4120  4120 F DEBUG: signal 11 (SIGSEGV), code 1, fault addr 0x0",
+            "10-01 10:00:00.000  4120  4120 F DEBUG: #00 pc 0000000000012345  /system/lib64/libc.so (abort+164)",
+            "10-01 10:00:00.000  4120  4120 F DEBUG: #01 pc 0000000000067890  /data/app/lib/libnative.so (Java_x+8)",
+        ];
+        let emits = assemble(&lines);
+        // The signal line is a standalone record; the two #NN pc frames form a native trace.
+        assert_eq!(emits.len(), 2, "got {emits:#?}");
+        assert!(matches!(&emits[0], Emit::Record(r) if r.msg.contains("SIGSEGV")));
+        match &emits[1] {
+            Emit::Trace(t) => {
+                assert_eq!(t.kind, TraceKind::Native);
+                assert!(t.is_fatal);
+                assert_eq!(t.records.len(), 2);
+            }
+            other => panic!("expected native trace, got {other:?}"),
+        }
     }
 
     #[test]

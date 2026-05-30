@@ -98,6 +98,7 @@ mod tests {
     fn fatal_trace(tag: &str, pid: u32) -> Emit {
         Emit::Trace(crate::trace::Trace {
             is_fatal: true,
+            kind: crate::trace::TraceKind::Java,
             records: vec![LogRecord {
                 ts: "05-30 12:00:00.000".to_string(),
                 pid,
@@ -156,6 +157,7 @@ mod tests {
         let f = Filter::new(false, &[], &["System.err".to_string()], Level::Verbose).unwrap();
         let t = Emit::Trace(crate::trace::Trace {
             is_fatal: false,
+            kind: crate::trace::TraceKind::Java,
             records: vec![LogRecord {
                 ts: "05-30 12:00:00.000".to_string(),
                 pid: 1,

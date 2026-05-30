@@ -32,6 +32,8 @@ pub struct Frame {
     pub file: Option<String>,
     /// 1-based source line, when present.
     pub line: Option<u32>,
+    /// The location was `SourceFile` / `Unknown Source` — a sign of an R8/minified build.
+    pub obfuscated: bool,
 }
 
 /// Parse a trimmed trace line of the form `at <fqmethod>(<loc>)`. Returns `None` for
@@ -53,6 +55,7 @@ pub fn parse_frame(line: &str) -> Option<Frame> {
         }
         _ => (None, None),
     };
+    let obfuscated = loc.starts_with("SourceFile") || loc.starts_with("Unknown Source");
 
     let segs: Vec<&str> = fqmethod.split('.').collect();
     if segs.len() < 2 {
@@ -71,6 +74,7 @@ pub fn parse_frame(line: &str) -> Option<Frame> {
         pkg_path,
         file,
         line,
+        obfuscated,
     })
 }
 
